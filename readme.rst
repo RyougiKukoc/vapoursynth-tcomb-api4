@@ -82,7 +82,7 @@ Release asset:
 
 ::
 
-   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4/tcomb-msys2-ucrt64.zip
+   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.1/tcomb-msys2-ucrt64.zip
 
 If that asset is not available, the build hook falls back to a local Meson
 build. The fallback requires a Windows x86_64 build environment with Meson,

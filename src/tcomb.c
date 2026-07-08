@@ -1095,24 +1095,6 @@ static void VS_CC tcombFree(void *instanceData, VSCore *core, const VSAPI *vsapi
 }
 
 
-static int invokeCache(VSNode **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
-    VSMap *args = vsapi->createMap();
-    vsapi->mapSetNode(args, "clip", *node, maReplace);
-    vsapi->freeNode(*node);
-    VSMap *ret = vsapi->invoke(stdPlugin, "Cache", args);
-    vsapi->freeMap(args);
-    if (!vsapi->mapGetError(ret)) {
-        *node = vsapi->mapGetNode(ret, "clip", 0, NULL);
-        vsapi->freeMap(ret);
-        return 1;
-    } else {
-        vsapi->mapSetError(out, vsapi->mapGetError(ret));
-        vsapi->freeMap(ret);
-        return 0;
-    }
-}
-
-
 static int invokeSeparateFields(VSNode **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
     VSMap *args = vsapi->createMap();
     vsapi->mapSetNode(args, "clip", *node, maReplace);
@@ -1272,9 +1254,6 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
     if (d.scthresh >= 0.0)
         d.diffmaxsc = (int64_t)(d.diffmaxsc * d.scthresh / 100.0);
 
-    if (!invokeCache(&d.node, out, stdPlugin, vsapi))
-        return;
-    
     data = malloc(sizeof(d));
     *data = d;
     {
@@ -1282,8 +1261,6 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
         vsapi->createVideoFilter(out, "TCombStage1", &data->vi, tcombStage1GetFrame, tcombFree, fmParallel, deps, 1, data, core);
     }
     d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
-    if (!invokeCache(&d.node, out, stdPlugin, vsapi))
-        return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
@@ -1293,8 +1270,6 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
         vsapi->createVideoFilter(out, "TCombStage2", &data->vi, tcombStage2GetFrame, tcombFree, fmParallel, deps, 1, data, core);
     }
     d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
-    if (!invokeCache(&d.node, out, stdPlugin, vsapi))
-        return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
@@ -1304,8 +1279,6 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
         vsapi->createVideoFilter(out, "TCombStage3", &data->vi, tcombStage3GetFrame, tcombFree, fmParallel, deps, 1, data, core);
     }
     d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
-    if (!invokeCache(&d.node, out, stdPlugin, vsapi))
-        return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
@@ -1315,8 +1288,6 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
         vsapi->createVideoFilter(out, "TCombStage4", &data->vi, tcombStage4GetFrame, tcombFree, fmParallel, deps, 1, data, core);
     }
     d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
-    if (!invokeCache(&d.node, out, stdPlugin, vsapi))
-        return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
@@ -1328,9 +1299,6 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
     d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
 
     if (!invokeDoubleWeave(&d.node, out, stdPlugin, vsapi))
-        return;
-
-    if (!invokeCache(&d.node, out, stdPlugin, vsapi))
         return;
 
     if (!invokeSelectEvery(&d.node, out, stdPlugin, vsapi))
@@ -1345,7 +1313,7 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
     vspapi->configPlugin("com.nodame.tcomb", "tcomb", "Dotcrawl and rainbow remover",
-                         VS_MAKE_VERSION(4, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
+                         VS_MAKE_VERSION(4, 1), VAPOURSYNTH_API_VERSION, 0, plugin);
     vspapi->registerFunction("TComb",
                              "clip:vnode;"
                              "mode:int:opt;"
