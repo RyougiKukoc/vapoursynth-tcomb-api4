@@ -27,8 +27,8 @@
 
 
 
-#include <VapourSynth.h>
-#include <VSHelper.h>
+#include <VapourSynth4.h>
+#include <VSHelper4.h>
 
 
 #define min3(a,b,c) VSMIN(VSMIN(a,b),c)
@@ -66,8 +66,8 @@ enum TCombModes {
 
 
 typedef struct {
-    VSNodeRef *node;
-    const VSVideoInfo *vi;
+    VSNode *node;
+    VSVideoInfo vi;
 
     int mode;
     int fthreshl;
@@ -83,14 +83,14 @@ typedef struct {
 
 
 
-static void copyPad(const VSFrameRef *src, VSFrameRef *dst, TCombData *d, const VSAPI *vsapi)
+static void copyPad(const VSFrame *src, VSFrame *dst, TCombData *d, const VSAPI *vsapi)
 {
     for (int b = d->start; b < d->stop; ++b) {
-        int pitch = vsapi->getStride(dst, b);
+        ptrdiff_t pitch = vsapi->getStride(dst, b);
 
-        vs_bitblt(vsapi->getWritePtr(dst, b) + pitch + 1, pitch,
+        vsh_bitblt(vsapi->getWritePtr(dst, b) + pitch + 1, pitch,
                 vsapi->getReadPtr(src, b), vsapi->getStride(src, b),
-                vsapi->getFrameWidth(src, b) * d->vi->format->bytesPerSample, vsapi->getFrameHeight(src, b));
+                vsapi->getFrameWidth(src, b) * d->vi.format.bytesPerSample, vsapi->getFrameHeight(src, b));
         int height = vsapi->getFrameHeight(dst, b);
         int width = vsapi->getFrameWidth(dst, b);
         if (b == 0) {
@@ -111,7 +111,7 @@ static void copyPad(const VSFrameRef *src, VSFrameRef *dst, TCombData *d, const 
 }
 
 
-static void MinMax(const VSFrameRef *src, VSFrameRef *dmin, VSFrameRef *dmax, VSFrameRef *pad, TCombData *d, const VSAPI *vsapi)
+static void MinMax(const VSFrame *src, VSFrame *dmin, VSFrame *dmax, VSFrame *pad, TCombData *d, const VSAPI *vsapi)
 {
     copyPad(src, pad, d, vsapi);
 
@@ -154,15 +154,15 @@ static void MinMax(const VSFrameRef *src, VSFrameRef *dmin, VSFrameRef *dmax, VS
 }
 
 
-static void buildFinalFrame(const VSFrameRef *p2, const VSFrameRef *p1, const VSFrameRef *src,
-        const VSFrameRef *n1, const VSFrameRef *n2, const VSFrameRef *m1, const VSFrameRef *m2, const VSFrameRef *m3,
-        VSFrameRef *dst, VSFrameRef *min, VSFrameRef *max, VSFrameRef *pad, TCombData *d, const VSAPI *vsapi)
+static void buildFinalFrame(const VSFrame *p2, const VSFrame *p1, const VSFrame *src,
+        const VSFrame *n1, const VSFrame *n2, const VSFrame *m1, const VSFrame *m2, const VSFrame *m3,
+        VSFrame *dst, VSFrame *min, VSFrame *max, VSFrame *pad, TCombData *d, const VSAPI *vsapi)
 {
     if (!d->map)
-        for (int b = 0; b < d->vi->format->numPlanes; ++b)
+        for (int b = 0; b < d->vi.format.numPlanes; ++b)
             memcpy(vsapi->getWritePtr(dst, b), vsapi->getReadPtr(src, b), vsapi->getStride(src, b) * vsapi->getFrameHeight(src, b));
     else
-        for (int b = 0; b < d->vi->format->numPlanes; ++b)
+        for (int b = 0; b < d->vi.format.numPlanes; ++b)
             memset(vsapi->getWritePtr(dst, b), 0, vsapi->getStride(dst, b) * vsapi->getFrameHeight(dst, b));
 
     MinMax(src, min, max, pad, d, vsapi);
@@ -272,8 +272,8 @@ static void buildFinalFrame(const VSFrameRef *p2, const VSFrameRef *p1, const VS
 }
 
 
-static void buildFinalMask(const VSFrameRef *s1, const VSFrameRef *s2, const VSFrameRef *m1,
-        VSFrameRef *dst, TCombData *d, const VSAPI *vsapi)
+static void buildFinalMask(const VSFrame *s1, const VSFrame *s2, const VSFrame *m1,
+        VSFrame *dst, TCombData *d, const VSAPI *vsapi)
 {
     for (int b = d->start; b < d->stop; ++b) {
         const uint8_t *s1p = vsapi->getReadPtr(s1, b);
@@ -306,7 +306,7 @@ static void buildFinalMask(const VSFrameRef *s1, const VSFrameRef *s2, const VSF
 }
 
 
-static void andNeighborsInPlace(VSFrameRef *src, const VSAPI *vsapi)
+static void andNeighborsInPlace(VSFrame *src, const VSAPI *vsapi)
 {
     uint8_t *srcp = vsapi->getWritePtr(src, 0);
     const int height = vsapi->getFrameHeight(src, 0);
@@ -360,7 +360,7 @@ static void andNeighborsInPlace(VSFrameRef *src, const VSAPI *vsapi)
 }
 
 
-static void absDiff(const VSFrameRef *src1, const VSFrameRef *src2, VSFrameRef *dst, const VSAPI *vsapi)
+static void absDiff(const VSFrame *src1, const VSFrame *src2, VSFrame *dst, const VSAPI *vsapi)
 {
     const uint8_t *srcp1 = vsapi->getReadPtr(src1, 0);
     const uint8_t *srcp2 = vsapi->getReadPtr(src2, 0);
@@ -384,7 +384,7 @@ static void absDiff(const VSFrameRef *src1, const VSFrameRef *src2, VSFrameRef *
 }
 
 
-static void absDiffAndMinMask(const VSFrameRef *src1, const VSFrameRef *src2, VSFrameRef *dst, const VSAPI *vsapi)
+static void absDiffAndMinMask(const VSFrame *src1, const VSFrame *src2, VSFrame *dst, const VSAPI *vsapi)
 {
     const uint8_t *srcp1 = vsapi->getReadPtr(src1, 0);
     const uint8_t *srcp2 = vsapi->getReadPtr(src2, 0);
@@ -410,7 +410,7 @@ static void absDiffAndMinMask(const VSFrameRef *src1, const VSFrameRef *src2, VS
 }
 
 
-static void absDiffAndMinMaskThresh(const VSFrameRef *src1, const VSFrameRef *src2, VSFrameRef *dst,
+static void absDiffAndMinMaskThresh(const VSFrame *src1, const VSFrame *src2, VSFrame *dst,
         TCombData *d, const VSAPI *vsapi)
 {
     const uint8_t *srcp1 = vsapi->getReadPtr(src1, 0);
@@ -443,8 +443,8 @@ static void absDiffAndMinMaskThresh(const VSFrameRef *src1, const VSFrameRef *sr
 }
 
 
-static void checkOscillation5(const VSFrameRef *p2, const VSFrameRef *p1, const VSFrameRef *s1,
-        const VSFrameRef *n1, const VSFrameRef *n2, VSFrameRef *dst, TCombData *d, const VSAPI *vsapi)
+static void checkOscillation5(const VSFrame *p2, const VSFrame *p1, const VSFrame *s1,
+        const VSFrame *n1, const VSFrame *n2, VSFrame *dst, TCombData *d, const VSAPI *vsapi)
 {
     for (int b = d->start; b < d->stop; ++b) {
         const uint8_t *p1p = vsapi->getReadPtr(p1, b);
@@ -486,7 +486,7 @@ static void checkOscillation5(const VSFrameRef *p2, const VSFrameRef *p1, const 
 }
 
 
-static void calcAverages(const VSFrameRef *s1, const VSFrameRef *s2, VSFrameRef *dst, TCombData *d, const VSAPI *vsapi)
+static void calcAverages(const VSFrame *s1, const VSFrame *s2, VSFrame *dst, TCombData *d, const VSAPI *vsapi)
 {
     for (int b = d->start; b < d->stop; ++b) {
         const uint8_t *s1p = vsapi->getReadPtr(s1, b);
@@ -511,8 +511,8 @@ static void calcAverages(const VSFrameRef *s1, const VSFrameRef *s2, VSFrameRef 
 }
 
 
-static void checkAvgOscCorrelation(const VSFrameRef *s1, const VSFrameRef *s2, const VSFrameRef *s3,
-        const VSFrameRef *s4, VSFrameRef *dst, TCombData *d, const VSAPI *vsapi)
+static void checkAvgOscCorrelation(const VSFrame *s1, const VSFrame *s2, const VSFrame *s3,
+        const VSFrame *s4, VSFrame *dst, TCombData *d, const VSAPI *vsapi)
 {
     for (int b = d->start; b < d->stop; ++b) {
         const uint8_t *s1p = vsapi->getReadPtr(s1, b);
@@ -546,8 +546,8 @@ static void checkAvgOscCorrelation(const VSFrameRef *s1, const VSFrameRef *s2, c
 }
 
 
-static void or3Masks(const VSFrameRef *s1, const VSFrameRef *s2, const VSFrameRef *s3,
-        VSFrameRef *dst, const VSAPI *vsapi)
+static void or3Masks(const VSFrame *s1, const VSFrame *s2, const VSFrame *s3,
+        VSFrame *dst, const VSAPI *vsapi)
 {
     for (int b = 1; b < 3; ++b) {
         const uint8_t *s1p = vsapi->getReadPtr(s1, b);
@@ -575,7 +575,7 @@ static void or3Masks(const VSFrameRef *s1, const VSFrameRef *s2, const VSFrameRe
 }
 
 
-static void orAndMasks(const VSFrameRef *s1, const VSFrameRef *s2, VSFrameRef *dst, const VSAPI *vsapi)
+static void orAndMasks(const VSFrame *s1, const VSFrame *s2, VSFrame *dst, const VSAPI *vsapi)
 {
     const uint8_t *s1p = vsapi->getReadPtr(s1, 0);
     const int stride = vsapi->getStride(s1, 0);
@@ -599,7 +599,7 @@ static void orAndMasks(const VSFrameRef *s1, const VSFrameRef *s2, VSFrameRef *d
 }
 
 
-static void andMasks(const VSFrameRef *s1, const VSFrameRef *s2, VSFrameRef *dst, const VSAPI *vsapi)
+static void andMasks(const VSFrame *s1, const VSFrame *s2, VSFrame *dst, const VSAPI *vsapi)
 {
     const uint8_t *s1p = vsapi->getReadPtr(s1, 0);
     const int stride = vsapi->getStride(s1, 0);
@@ -623,7 +623,7 @@ static void andMasks(const VSFrameRef *s1, const VSFrameRef *s2, VSFrameRef *dst
 }
 
 
-static int checkSceneChange(const VSFrameRef *s1, const VSFrameRef *s2, TCombData *d, const VSAPI *vsapi)
+static int checkSceneChange(const VSFrame *s1, const VSFrame *s2, TCombData *d, const VSAPI *vsapi)
 {
     if (d->scthresh < 0.0)
         return 0;
@@ -658,7 +658,7 @@ static int checkSceneChange(const VSFrameRef *s1, const VSFrameRef *s2, TCombDat
 }
 
 
-static void VerticalBlur3(const VSFrameRef *src, VSFrameRef *dst, const VSAPI *vsapi)
+static void VerticalBlur3(const VSFrame *src, VSFrame *dst, const VSAPI *vsapi)
 {
     const uint8_t *srcp = vsapi->getReadPtr(src, 0);
     uint8_t *dstp = vsapi->getWritePtr(dst, 0);
@@ -707,7 +707,7 @@ static inline void horizontalBlur3_c( const uint8_t *srcp, uint8_t *dstp, int st
 }
 
 
-static void HorizontalBlur3(const VSFrameRef *src, VSFrameRef *dst, const VSAPI *vsapi)
+static void HorizontalBlur3(const VSFrame *src, VSFrame *dst, const VSAPI *vsapi)
 {
     const uint8_t *srcp = vsapi->getReadPtr(src, 0);
     uint8_t *dstp = vsapi->getWritePtr(dst, 0);
@@ -761,7 +761,7 @@ static inline void horizontalBlur6_c( const uint8_t *srcp, uint8_t *dstp, int st
 }
 
 
-static void HorizontalBlur6(const VSFrameRef *src, VSFrameRef *dst, const VSAPI *vsapi)
+static void HorizontalBlur6(const VSFrame *src, VSFrame *dst, const VSAPI *vsapi)
 {
     const uint8_t *srcp = vsapi->getReadPtr(src, 0);
     uint8_t *dstp = vsapi->getWritePtr(dst, 0);
@@ -800,33 +800,27 @@ static void HorizontalBlur6(const VSFrameRef *src, VSFrameRef *dst, const VSAPI 
 }
 
 
-static void VS_CC tcombInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-    TCombData *d = (TCombData *) * instanceData;
-
-    vsapi->setVideoInfo(d->vi, 1, node);
-}
-
-
-static const VSFrameRef *VS_CC tcombStage1GetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    TCombData *d = (TCombData *) * instanceData;
+static const VSFrame *VS_CC tcombStage1GetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+    TCombData *d = (TCombData *)instanceData;
+    (void)frameData;
 
     if (activationReason == arInitial) {
         vsapi->requestFrameFilter(VSMAX(0, n - 2), d->node, frameCtx);
         vsapi->requestFrameFilter(n, d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef *prev = vsapi->getFrameFilter(VSMAX(0, n - 2), d->node, frameCtx);
-        const VSFrameRef *cur = vsapi->getFrameFilter(n, d->node, frameCtx);
+        const VSFrame *prev = vsapi->getFrameFilter(VSMAX(0, n - 2), d->node, frameCtx);
+        const VSFrame *cur = vsapi->getFrameFilter(n, d->node, frameCtx);
 
-        VSFrameRef *dst = vsapi->copyFrame(cur, core);
-        VSMap *props = vsapi->getFramePropsRW(dst);
+        VSFrame *dst = vsapi->copyFrame(cur, core);
+        VSMap *props = vsapi->getFramePropertiesRW(dst);
 
         int sc = checkSceneChange(cur, prev, d, vsapi);
-        vsapi->propSetInt(props, "tcomb_sc", sc, paReplace);
+        vsapi->mapSetInt(props, "tcomb_sc", sc, maReplace);
 
         if (d->mode == LumaOnly || d->mode == LumaAndChroma) {
-            VSFrameRef *blurred[6];
+            VSFrame *blurred[6];
             for (int i = 0; i < 6; i++)
-                blurred[i] = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);
+                blurred[i] = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
 
             HorizontalBlur3(cur, blurred[0], vsapi);
             VerticalBlur3(cur, blurred[1], vsapi);
@@ -836,7 +830,7 @@ static const VSFrameRef *VS_CC tcombStage1GetFrame(int n, int activationReason, 
             HorizontalBlur6(blurred[4], blurred[5], vsapi);
 
             for (int i = 0; i < 6; i++) {
-                vsapi->propSetFrame(props, "tcomb_blurred", blurred[i], paAppend);
+                vsapi->mapSetFrame(props, "tcomb_blurred", blurred[i], maAppend);
                 vsapi->freeFrame(blurred[i]);
             }
         }
@@ -851,31 +845,32 @@ static const VSFrameRef *VS_CC tcombStage1GetFrame(int n, int activationReason, 
 }
 
 
-static const VSFrameRef *VS_CC tcombStage2GetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    TCombData *d = (TCombData *) * instanceData;
+static const VSFrame *VS_CC tcombStage2GetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+    TCombData *d = (TCombData *)instanceData;
+    (void)frameData;
 
     if (activationReason == arInitial) {
         vsapi->requestFrameFilter(VSMAX(0, n - 2), d->node, frameCtx);
         vsapi->requestFrameFilter(n, d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef *prev = vsapi->getFrameFilter(VSMAX(0, n - 2), d->node, frameCtx);
-        const VSFrameRef *cur = vsapi->getFrameFilter(n, d->node, frameCtx);
+        const VSFrame *prev = vsapi->getFrameFilter(VSMAX(0, n - 2), d->node, frameCtx);
+        const VSFrame *cur = vsapi->getFrameFilter(n, d->node, frameCtx);
 
-        VSFrameRef *dst = vsapi->copyFrame(cur, core);
-        VSMap *props = vsapi->getFramePropsRW(dst);
+        VSFrame *dst = vsapi->copyFrame(cur, core);
+        VSMap *props = vsapi->getFramePropertiesRW(dst);
 
         if (d->mode == LumaOnly || d->mode == LumaAndChroma) {
-            const VSMap *prev_props = vsapi->getFramePropsRO(prev);
-            const VSMap *cur_props = vsapi->getFramePropsRO(cur);
+            const VSMap *prev_props = vsapi->getFramePropertiesRO(prev);
+            const VSMap *cur_props = vsapi->getFramePropertiesRO(cur);
 
-            const VSFrameRef *prev_blurred[6], *cur_blurred[6];
+            const VSFrame *prev_blurred[6], *cur_blurred[6];
 
             for (int i = 0; i < 6; i++) {
-                prev_blurred[i] = vsapi->propGetFrame(prev_props, "tcomb_blurred", i, NULL);
-                cur_blurred[i] = vsapi->propGetFrame(cur_props, "tcomb_blurred", i, NULL);
+                prev_blurred[i] = vsapi->mapGetFrame(prev_props, "tcomb_blurred", i, NULL);
+                cur_blurred[i] = vsapi->mapGetFrame(cur_props, "tcomb_blurred", i, NULL);
             }
 
-            VSFrameRef *msk1 = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);    
+            VSFrame *msk1 = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
 
             absDiff(prev, cur, msk1, vsapi);
             for (int i = 0; i < 5; ++i)
@@ -887,17 +882,17 @@ static const VSFrameRef *VS_CC tcombStage2GetFrame(int n, int activationReason, 
                 vsapi->freeFrame(cur_blurred[i]);
             }
 
-            vsapi->propDeleteKey(props, "tcomb_blurred");
+            vsapi->mapDeleteKey(props, "tcomb_blurred");
 
-            vsapi->propSetFrame(props, "tcomb_msk1", msk1, paReplace);
+            vsapi->mapSetFrame(props, "tcomb_msk1", msk1, maReplace);
             vsapi->freeFrame(msk1);
         }
 
-        VSFrameRef *avg = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);    
+        VSFrame *avg = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
 
         calcAverages(cur, prev, avg, d, vsapi);
 
-        vsapi->propSetFrame(props, "tcomb_avg", avg, paReplace);
+        vsapi->mapSetFrame(props, "tcomb_avg", avg, maReplace);
         vsapi->freeFrame(avg);
 
         vsapi->freeFrame(prev);
@@ -910,32 +905,33 @@ static const VSFrameRef *VS_CC tcombStage2GetFrame(int n, int activationReason, 
 }
 
 
-static const VSFrameRef *VS_CC tcombStage3GetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    TCombData *d = (TCombData *) * instanceData;
+static const VSFrame *VS_CC tcombStage3GetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+    TCombData *d = (TCombData *)instanceData;
+    (void)frameData;
 
     if (activationReason == arInitial) {
         for (int i = -8; i <= 0; i += 2) {
             vsapi->requestFrameFilter(VSMAX(0, n - i), d->node, frameCtx);
         }
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef *src[5];
+        const VSFrame *src[5];
 
         for (int i = -8; i <= 0; i += 2)
             src[(i + 8) / 2] = vsapi->getFrameFilter(VSMAX(0, n - i), d->node, frameCtx);
 
-        VSFrameRef *dst = vsapi->copyFrame(src[4], core);
-        VSMap *props = vsapi->getFramePropsRW(dst);
+        VSFrame *dst = vsapi->copyFrame(src[4], core);
+        VSMap *props = vsapi->getFramePropertiesRW(dst);
 
-        VSFrameRef *omsk = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);    
+        VSFrame *omsk = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
 
         checkOscillation5(src[0], src[1], src[2], src[3], src[4], omsk, d, vsapi);
 
-        const VSFrameRef *avg[4];
+        const VSFrame *avg[4];
         const VSMap *src_props[4];
 
         for (int i = 0; i < 4; i++) {
-            src_props[i] = vsapi->getFramePropsRO(src[i + 1]);
-            avg[i] = vsapi->propGetFrame(src_props[i], "tcomb_avg", 0, NULL);
+            src_props[i] = vsapi->getFramePropertiesRO(src[i + 1]);
+            avg[i] = vsapi->mapGetFrame(src_props[i], "tcomb_avg", 0, NULL);
         }
 
         checkAvgOscCorrelation(avg[0], avg[1], avg[2], avg[3], omsk, d, vsapi);
@@ -946,9 +942,9 @@ static const VSFrameRef *VS_CC tcombStage3GetFrame(int n, int activationReason, 
         for (int i = 0; i < 5; i++)
             vsapi->freeFrame(src[i]);
 
-        vsapi->propDeleteKey(props, "tcomb_avg");
+        vsapi->mapDeleteKey(props, "tcomb_avg");
 
-        vsapi->propSetFrame(props, "tcomb_omsk", omsk, paReplace);
+        vsapi->mapSetFrame(props, "tcomb_omsk", omsk, maReplace);
         vsapi->freeFrame(omsk);
 
         return dst;
@@ -958,42 +954,43 @@ static const VSFrameRef *VS_CC tcombStage3GetFrame(int n, int activationReason, 
 }
 
 
-static const VSFrameRef *VS_CC tcombStage4GetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    TCombData *d = (TCombData *) * instanceData;
+static const VSFrame *VS_CC tcombStage4GetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+    TCombData *d = (TCombData *)instanceData;
+    (void)frameData;
 
     if (activationReason == arInitial) {
         for (int i = -4; i <= 6; i += 2)
-            vsapi->requestFrameFilter(VSMIN(VSMAX(0, n + i), d->vi->numFrames - 1), d->node, frameCtx);
+            vsapi->requestFrameFilter(VSMIN(VSMAX(0, n + i), d->vi.numFrames - 1), d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef *src[6];
+        const VSFrame *src[6];
 
         for (int i = -4; i <= 6; i += 2)
-            src[(i + 4) / 2] = vsapi->getFrameFilter(VSMIN(VSMAX(0, n + i), d->vi->numFrames - 1), d->node, frameCtx);
+            src[(i + 4) / 2] = vsapi->getFrameFilter(VSMIN(VSMAX(0, n + i), d->vi.numFrames - 1), d->node, frameCtx);
 
-        VSFrameRef *dst = vsapi->copyFrame(src[2], core);
+        VSFrame *dst = vsapi->copyFrame(src[2], core);
 
         int sc[6];
-        const VSFrameRef *omsk[6];
-        const VSFrameRef *msk1[6] = { 0 };
+        const VSFrame *omsk[6];
+        const VSFrame *msk1[6] = { 0 };
 
         const VSMap *src_props[6];
 
         for (int i = 1; i < 6; i++) {
-            src_props[i] = vsapi->getFramePropsRO(src[i]);
-            omsk[i] = vsapi->propGetFrame(src_props[i], "tcomb_omsk", 0, NULL);
+            src_props[i] = vsapi->getFramePropertiesRO(src[i]);
+            omsk[i] = vsapi->mapGetFrame(src_props[i], "tcomb_omsk", 0, NULL);
         }
 
         for (int i = 1; i <= 2; i++) {
-            sc[i] = vsapi->propGetInt(src_props[i], "tcomb_sc", 0, NULL);
+            sc[i] = vsapi->mapGetInt(src_props[i], "tcomb_sc", 0, NULL);
             if (d->mode == LumaOnly || d->mode == LumaAndChroma)
-                msk1[i] = vsapi->propGetFrame(src_props[i], "tcomb_msk1", 0, NULL);
+                msk1[i] = vsapi->mapGetFrame(src_props[i], "tcomb_msk1", 0, NULL);
         }
 
-        VSFrameRef *msk2 = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);    
-        VSFrameRef *tmp = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);    
+        VSFrame *msk2 = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
+        VSFrame *tmp = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
 
         if (sc[1] || sc[2]) {
-            for (int i = 0; i < d->vi->format->numPlanes; i++)
+            for (int i = 0; i < d->vi.format.numPlanes; i++)
                 memset(vsapi->getWritePtr(msk2, i), 0, vsapi->getStride(msk2, i) * vsapi->getFrameHeight(msk2, i));
         } else {
             if (d->mode == LumaOnly || d->mode == LumaAndChroma) {
@@ -1023,13 +1020,13 @@ static const VSFrameRef *VS_CC tcombStage4GetFrame(int n, int activationReason, 
         for (int i = 0; i < 6; i++)
             vsapi->freeFrame(src[i]);
 
-        VSMap *props = vsapi->getFramePropsRW(dst);
-        vsapi->propSetFrame(props, "tcomb_msk2", msk2, paReplace);
+        VSMap *props = vsapi->getFramePropertiesRW(dst);
+        vsapi->mapSetFrame(props, "tcomb_msk2", msk2, maReplace);
         vsapi->freeFrame(msk2);
 
-        vsapi->propDeleteKey(props, "tcomb_msk1");
-        vsapi->propDeleteKey(props, "tcomb_omsk");
-        vsapi->propDeleteKey(props, "tcomb_sc");
+        vsapi->mapDeleteKey(props, "tcomb_msk1");
+        vsapi->mapDeleteKey(props, "tcomb_omsk");
+        vsapi->mapDeleteKey(props, "tcomb_sc");
 
         return dst;
     }
@@ -1038,31 +1035,32 @@ static const VSFrameRef *VS_CC tcombStage4GetFrame(int n, int activationReason, 
 }
 
 
-static const VSFrameRef *VS_CC tcombStage5GetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    TCombData *d = (TCombData *) * instanceData;
+static const VSFrame *VS_CC tcombStage5GetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+    TCombData *d = (TCombData *)instanceData;
+    (void)frameData;
 
     if (activationReason == arInitial) {
         for (int i = -4; i <= 4; i += 2)
-            vsapi->requestFrameFilter(VSMIN(VSMAX(0, n + i), d->vi->numFrames - 1), d->node, frameCtx);
+            vsapi->requestFrameFilter(VSMIN(VSMAX(0, n + i), d->vi.numFrames - 1), d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef *src[5];
+        const VSFrame *src[5];
 
         for (int i = -4; i <= 4; i += 2)
-            src[(i + 4) / 2] = vsapi->getFrameFilter(VSMIN(VSMAX(0, n + i), d->vi->numFrames - 1), d->node, frameCtx);
+            src[(i + 4) / 2] = vsapi->getFrameFilter(VSMIN(VSMAX(0, n + i), d->vi.numFrames - 1), d->node, frameCtx);
 
         const VSMap *src_props[5];
-        const VSFrameRef *msk2[5];
+        const VSFrame *msk2[5];
 
         for (int i = 2; i < 5; i++) {
-            src_props[i] = vsapi->getFramePropsRO(src[i]);
-            msk2[i] = vsapi->propGetFrame(src_props[i], "tcomb_msk2", 0, NULL);
+            src_props[i] = vsapi->getFramePropertiesRO(src[i]);
+            msk2[i] = vsapi->mapGetFrame(src_props[i], "tcomb_msk2", 0, NULL);
         }
 
-        VSFrameRef *dst = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, src[2], core);
+        VSFrame *dst = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, src[2], core);
 
-        VSFrameRef *min = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);
-        VSFrameRef *max = vsapi->newVideoFrame(d->vi->format, d->vi->width, d->vi->height, NULL, core);
-        VSFrameRef *pad = vsapi->newVideoFrame(d->vi->format, d->vi->width + 4, d->vi->height + 4, NULL, core);
+        VSFrame *min = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
+        VSFrame *max = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, NULL, core);
+        VSFrame *pad = vsapi->newVideoFrame(&d->vi.format, d->vi.width + 4, d->vi.height + 4, NULL, core);
     
         buildFinalFrame(src[0], src[1], src[2], src[3], src[4],
                 msk2[2], msk2[3], msk2[4],
@@ -1078,8 +1076,8 @@ static const VSFrameRef *VS_CC tcombStage5GetFrame(int n, int activationReason, 
         for (int i = 0; i < 5; i++)
             vsapi->freeFrame(src[i]);
 
-        VSMap *props = vsapi->getFramePropsRW(dst);
-        vsapi->propDeleteKey(props, "tcomb_msk2");
+        VSMap *props = vsapi->getFramePropertiesRW(dst);
+        vsapi->mapDeleteKey(props, "tcomb_msk2");
 
         return dst;
     }
@@ -1090,82 +1088,83 @@ static const VSFrameRef *VS_CC tcombStage5GetFrame(int n, int activationReason, 
 
 static void VS_CC tcombFree(void *instanceData, VSCore *core, const VSAPI *vsapi) {
     TCombData *d = (TCombData *)instanceData;
+    (void)core;
 
     vsapi->freeNode(d->node);
     free(d);
 }
 
 
-static int invokeCache(VSNodeRef **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
+static int invokeCache(VSNode **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
     VSMap *args = vsapi->createMap();
-    vsapi->propSetNode(args, "clip", *node, paReplace);
+    vsapi->mapSetNode(args, "clip", *node, maReplace);
     vsapi->freeNode(*node);
     VSMap *ret = vsapi->invoke(stdPlugin, "Cache", args);
     vsapi->freeMap(args);
-    if (!vsapi->getError(ret)) {
-        *node = vsapi->propGetNode(ret, "clip", 0, NULL);
+    if (!vsapi->mapGetError(ret)) {
+        *node = vsapi->mapGetNode(ret, "clip", 0, NULL);
         vsapi->freeMap(ret);
         return 1;
     } else {
-        vsapi->setError(out, vsapi->getError(ret));
+        vsapi->mapSetError(out, vsapi->mapGetError(ret));
         vsapi->freeMap(ret);
         return 0;
     }
 }
 
 
-static int invokeSeparateFields(VSNodeRef **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
+static int invokeSeparateFields(VSNode **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
     VSMap *args = vsapi->createMap();
-    vsapi->propSetNode(args, "clip", *node, paReplace);
+    vsapi->mapSetNode(args, "clip", *node, maReplace);
     vsapi->freeNode(*node);
-    vsapi->propSetInt(args, "tff", 1, paReplace);
+    vsapi->mapSetInt(args, "tff", 1, maReplace);
     VSMap *ret = vsapi->invoke(stdPlugin, "SeparateFields", args);
     vsapi->freeMap(args);
-    if (!vsapi->getError(ret)) {
-        *node = vsapi->propGetNode(ret, "clip", 0, NULL);
+    if (!vsapi->mapGetError(ret)) {
+        *node = vsapi->mapGetNode(ret, "clip", 0, NULL);
         vsapi->freeMap(ret);
         return 1;
     } else {
-        vsapi->setError(out, vsapi->getError(ret));
+        vsapi->mapSetError(out, vsapi->mapGetError(ret));
         vsapi->freeMap(ret);
         return 0;
     }
 }
 
 
-static int invokeDoubleWeave(VSNodeRef **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
+static int invokeDoubleWeave(VSNode **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
     VSMap *args = vsapi->createMap();
-    vsapi->propSetNode(args, "clip", *node, paReplace);
+    vsapi->mapSetNode(args, "clip", *node, maReplace);
     vsapi->freeNode(*node);
-    vsapi->propSetInt(args, "tff", 1, paReplace);
+    vsapi->mapSetInt(args, "tff", 1, maReplace);
     VSMap *ret = vsapi->invoke(stdPlugin, "DoubleWeave", args);
     vsapi->freeMap(args);
-    if (!vsapi->getError(ret)) {
-        *node = vsapi->propGetNode(ret, "clip", 0, NULL);
+    if (!vsapi->mapGetError(ret)) {
+        *node = vsapi->mapGetNode(ret, "clip", 0, NULL);
         vsapi->freeMap(ret);
         return 1;
     } else {
-        vsapi->setError(out, vsapi->getError(ret));
+        vsapi->mapSetError(out, vsapi->mapGetError(ret));
         vsapi->freeMap(ret);
         return 0;
     }
 }
 
 
-static int invokeSelectEvery(VSNodeRef **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
+static int invokeSelectEvery(VSNode **node, VSMap *out, VSPlugin *stdPlugin, const VSAPI *vsapi) {
     VSMap *args = vsapi->createMap();
-    vsapi->propSetNode(args, "clip", *node, paReplace);
+    vsapi->mapSetNode(args, "clip", *node, maReplace);
     vsapi->freeNode(*node);
-    vsapi->propSetInt(args, "cycle", 2, paReplace);
-    vsapi->propSetInt(args, "offsets", 0, paReplace);
+    vsapi->mapSetInt(args, "cycle", 2, maReplace);
+    vsapi->mapSetInt(args, "offsets", 0, maReplace);
     VSMap *ret = vsapi->invoke(stdPlugin, "SelectEvery", args);
     vsapi->freeMap(args);
-    if (!vsapi->getError(ret)) {
-        *node = vsapi->propGetNode(ret, "clip", 0, NULL);
+    if (!vsapi->mapGetError(ret)) {
+        *node = vsapi->mapGetNode(ret, "clip", 0, NULL);
         vsapi->freeMap(ret);
         return 1;
     } else {
-        vsapi->setError(out, vsapi->getError(ret));
+        vsapi->mapSetError(out, vsapi->mapGetError(ret));
         vsapi->freeMap(ret);
         return 0;
     }
@@ -1176,78 +1175,79 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
     TCombData d;
     TCombData *data;
     int err;
+    (void)userData;
 
-    d.mode = vsapi->propGetInt(in, "mode", 0, &err);
+    d.mode = vsapi->mapGetInt(in, "mode", 0, &err);
     if (err)
         d.mode = LumaAndChroma;
 
-    d.fthreshl = vsapi->propGetInt(in, "fthreshl", 0, &err);
+    d.fthreshl = vsapi->mapGetInt(in, "fthreshl", 0, &err);
     if (err)
         d.fthreshl = 4;
 
-    d.fthreshc = vsapi->propGetInt(in, "fthreshc", 0, &err);
+    d.fthreshc = vsapi->mapGetInt(in, "fthreshc", 0, &err);
     if (err)
         d.fthreshc = 5;
 
-    d.othreshl = vsapi->propGetInt(in, "othreshl", 0, &err);
+    d.othreshl = vsapi->mapGetInt(in, "othreshl", 0, &err);
     if (err)
         d.othreshl = 5;
 
-    d.othreshc = vsapi->propGetInt(in, "othreshc", 0, &err);
+    d.othreshc = vsapi->mapGetInt(in, "othreshc", 0, &err);
     if (err)
         d.othreshc = 6;
 
-    d.map = !!vsapi->propGetInt(in, "map", 0, &err);
+    d.map = !!vsapi->mapGetInt(in, "map", 0, &err);
 
-    d.scthresh = vsapi->propGetFloat(in, "scthresh", 0, &err);
+    d.scthresh = vsapi->mapGetFloat(in, "scthresh", 0, &err);
     if (err)
         d.scthresh = 12.0;
 
 
     if (d.mode < LumaOnly || d.mode > LumaAndChroma) {
-        vsapi->setError(out, "TComb: mode must be 0, 1, or 2.");
+        vsapi->mapSetError(out, "TComb: mode must be 0, 1, or 2.");
         return;
     }
 
     if (d.fthreshl < 1 || d.fthreshl > 255) {
-        vsapi->setError(out, "TComb: fthreshl must be between 1 and 255 (inclusive).");
+        vsapi->mapSetError(out, "TComb: fthreshl must be between 1 and 255 (inclusive).");
         return;
     }
 
     if (d.fthreshc < 1 || d.fthreshc > 255) {
-        vsapi->setError(out, "TComb: fthreshc must be between 1 and 255 (inclusive).");
+        vsapi->mapSetError(out, "TComb: fthreshc must be between 1 and 255 (inclusive).");
         return;
     }
 
     if (d.othreshl < 1 || d.othreshl > 255) {
-        vsapi->setError(out, "TComb: othreshl must be between 1 and 255 (inclusive).");
+        vsapi->mapSetError(out, "TComb: othreshl must be between 1 and 255 (inclusive).");
         return;
     }
 
     if (d.othreshc < 1 || d.othreshc > 255) {
-        vsapi->setError(out, "TComb: othreshc must be between 1 and 255 (inclusive).");
+        vsapi->mapSetError(out, "TComb: othreshc must be between 1 and 255 (inclusive).");
         return;
     }
 
     if (d.scthresh > 100.0) {
-        vsapi->setError(out, "TComb: scthresh must not be more than 100.");
+        vsapi->mapSetError(out, "TComb: scthresh must not be more than 100.");
         return;
     }
 
-    d.node = vsapi->propGetNode(in, "clip", 0, 0);
-    d.vi = vsapi->getVideoInfo(d.node);
+    d.node = vsapi->mapGetNode(in, "clip", 0, NULL);
+    d.vi = *vsapi->getVideoInfo(d.node);
 
-    if (!isConstantFormat(d.vi) ||
-        (d.vi->format->colorFamily != cmGray && d.vi->format->colorFamily != cmYUV) ||
-        d.vi->format->sampleType != stInteger ||
-        d.vi->format->bitsPerSample != 8) {
-        vsapi->setError(out, "TComb: Input must be 8 bit Gray or YUV with constant format and dimensions.");
+    if (!vsh_isConstantVideoFormat(&d.vi) ||
+        (d.vi.format.colorFamily != cfGray && d.vi.format.colorFamily != cfYUV) ||
+        d.vi.format.sampleType != stInteger ||
+        d.vi.format.bitsPerSample != 8) {
+        vsapi->mapSetError(out, "TComb: Input must be 8 bit Gray or YUV with constant format and dimensions.");
         vsapi->freeNode(d.node);
         return;
     }
 
-    if (d.vi->format->colorFamily == cmGray && d.mode > LumaOnly) {
-        vsapi->setError(out, "TComb: Mode must be 0 when input is Gray.");
+    if (d.vi.format.colorFamily == cfGray && d.mode > LumaOnly) {
+        vsapi->mapSetError(out, "TComb: Mode must be 0 when input is Gray.");
         vsapi->freeNode(d.node);
         return;
     }
@@ -1260,15 +1260,15 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
     if (d.mode == ChromaOnly)
         d.start = 1;
 
-    VSPlugin *stdPlugin = vsapi->getPluginById("com.vapoursynth.std", core);
+    VSPlugin *stdPlugin = vsapi->getPluginByID("com.vapoursynth.std", core);
 
     if (!invokeSeparateFields(&d.node, out, stdPlugin, vsapi))
         return;
 
     // It's rather different after SeparateFields.
-    d.vi = vsapi->getVideoInfo(d.node);
+    d.vi = *vsapi->getVideoInfo(d.node);
 
-    d.diffmaxsc = (int64_t)((d.vi->width / 16) * 16) * d.vi->height * 219;
+    d.diffmaxsc = (int64_t)((d.vi.width / 16) * 16) * d.vi.height * 219;
     if (d.scthresh >= 0.0)
         d.diffmaxsc = (int64_t)(d.diffmaxsc * d.scthresh / 100.0);
 
@@ -1277,40 +1277,55 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
     
     data = malloc(sizeof(d));
     *data = d;
-    vsapi->createFilter(in, out, "TCombStage1", tcombInit, tcombStage1GetFrame, tcombFree, fmParallel, 0, data, core);
-    d.node = vsapi->propGetNode(out, "clip", 0, NULL);
+    {
+        VSFilterDependency deps[] = {{d.node, rpGeneral}};
+        vsapi->createVideoFilter(out, "TCombStage1", &data->vi, tcombStage1GetFrame, tcombFree, fmParallel, deps, 1, data, core);
+    }
+    d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
     if (!invokeCache(&d.node, out, stdPlugin, vsapi))
         return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
     *data = d;
-    vsapi->createFilter(in, out, "TCombStage2", tcombInit, tcombStage2GetFrame, tcombFree, fmParallel, 0, data, core);
-    d.node = vsapi->propGetNode(out, "clip", 0, NULL);
+    {
+        VSFilterDependency deps[] = {{d.node, rpGeneral}};
+        vsapi->createVideoFilter(out, "TCombStage2", &data->vi, tcombStage2GetFrame, tcombFree, fmParallel, deps, 1, data, core);
+    }
+    d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
     if (!invokeCache(&d.node, out, stdPlugin, vsapi))
         return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
     *data = d;
-    vsapi->createFilter(in, out, "TCombStage3", tcombInit, tcombStage3GetFrame, tcombFree, fmParallel, 0, data, core);
-    d.node = vsapi->propGetNode(out, "clip", 0, NULL);
+    {
+        VSFilterDependency deps[] = {{d.node, rpGeneral}};
+        vsapi->createVideoFilter(out, "TCombStage3", &data->vi, tcombStage3GetFrame, tcombFree, fmParallel, deps, 1, data, core);
+    }
+    d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
     if (!invokeCache(&d.node, out, stdPlugin, vsapi))
         return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
     *data = d;
-    vsapi->createFilter(in, out, "TCombStage4", tcombInit, tcombStage4GetFrame, tcombFree, fmParallel, 0, data, core);
-    d.node = vsapi->propGetNode(out, "clip", 0, NULL);
+    {
+        VSFilterDependency deps[] = {{d.node, rpGeneral}};
+        vsapi->createVideoFilter(out, "TCombStage4", &data->vi, tcombStage4GetFrame, tcombFree, fmParallel, deps, 1, data, core);
+    }
+    d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
     if (!invokeCache(&d.node, out, stdPlugin, vsapi))
         return;
     vsapi->clearMap(out);
 
     data = malloc(sizeof(d));
     *data = d;
-    vsapi->createFilter(in, out, "TComb", tcombInit, tcombStage5GetFrame, tcombFree, fmParallel, 0, data, core);
-    d.node = vsapi->propGetNode(out, "clip", 0, NULL);
+    {
+        VSFilterDependency deps[] = {{d.node, rpGeneral}};
+        vsapi->createVideoFilter(out, "TComb", &data->vi, tcombStage5GetFrame, tcombFree, fmParallel, deps, 1, data, core);
+    }
+    d.node = vsapi->mapGetNode(out, "clip", 0, NULL);
 
     if (!invokeDoubleWeave(&d.node, out, stdPlugin, vsapi))
         return;
@@ -1321,23 +1336,25 @@ static void VS_CC tcombCreate(const VSMap *in, VSMap *out, void *userData, VSCor
     if (!invokeSelectEvery(&d.node, out, stdPlugin, vsapi))
         return;
 
-    vsapi->propSetNode(out, "clip", d.node, paReplace);
+    vsapi->mapSetNode(out, "clip", d.node, maReplace);
     vsapi->freeNode(d.node);
 
     return;
 }
 
 
-VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegisterFunction registerFunc, VSPlugin *plugin) {
-    configFunc("com.nodame.tcomb", "tcomb", "Dotcrawl and rainbow remover", VAPOURSYNTH_API_VERSION, 1, plugin);
-    registerFunc("TComb",
-                 "clip:clip;"
-                 "mode:int:opt;"
-                 "fthreshl:int:opt;"
-                 "fthreshc:int:opt;"
-                 "othreshl:int:opt;"
-                 "othreshc:int:opt;"
-                 "map:int:opt;"
-                 "scthresh:float:opt;",
-                 tcombCreate, 0, plugin);
+VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
+    vspapi->configPlugin("com.nodame.tcomb", "tcomb", "Dotcrawl and rainbow remover",
+                         VS_MAKE_VERSION(4, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
+    vspapi->registerFunction("TComb",
+                             "clip:vnode;"
+                             "mode:int:opt;"
+                             "fthreshl:int:opt;"
+                             "fthreshc:int:opt;"
+                             "othreshl:int:opt;"
+                             "othreshc:int:opt;"
+                             "map:int:opt;"
+                             "scthresh:float:opt;",
+                             "clip:vnode;",
+                             tcombCreate, 0, plugin);
 }

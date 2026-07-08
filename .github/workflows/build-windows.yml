@@ -1,0 +1,125 @@
+name: Build Windows
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  msys2-ucrt64:
+    name: Build MSYS2 UCRT64
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python tools and VapourSynth
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install VapourSynth build hatchling packaging meson ninja
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Prepare VapourSynth pkg-config metadata
+        run: |
+          python tools/ci_prepare_vs_wheel.py
+
+      - name: Build package
+        run: |
+          $env:PATH = "$env:GITHUB_WORKSPACE\_deps\vapoursynth-wheel-R77;C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
+          $env:PKG_CONFIG_PATH = "$env:GITHUB_WORKSPACE\_deps\vapoursynth-wheel-R77\vapoursynth\lib\pkgconfig"
+          $env:PKG_CONFIG = 'pkg-config'
+          $env:TCOMB_FORCE_BUILD = '1'
+          $env:CC = 'gcc'
+          python tools/ci_build_windows.py --clean --wheel
+
+      - name: Smoke test package directory
+        run: |
+          python tools/ci_smoke_package.py
+
+      - name: Create release assets
+        run: |
+          python tools/ci_make_release_assets.py --clean
+
+      - name: Smoke test release zip
+        run: |
+          python tools/ci_smoke_package.py --artifact-zip dist\release-assets\tcomb-msys2-ucrt64.zip
+
+      - name: Install built wheel
+        run: |
+          $wheel = Get-ChildItem dist\wheels\*.whl | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $wheel) { throw 'built wheel not found under dist\wheels' }
+          python -m pip install --force-reinstall --no-deps $wheel
+
+      - name: Smoke test installed wheel
+        run: |
+          python tools/ci_smoke_installed_wheel.py
+
+      - name: Smoke test source install with prebuilt release asset
+        run: |
+          python -m pip uninstall -y vapoursynth-tcomb
+          $env:TCOMB_PREBUILT_URL = Join-Path $PWD 'dist\release-assets\tcomb-msys2-ucrt64.zip'
+          Remove-Item Env:\TCOMB_FORCE_BUILD -ErrorAction SilentlyContinue
+          python -m pip install --force-reinstall --no-deps --no-build-isolation -v .
+          python tools/ci_smoke_installed_wheel.py
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcomb-msys2-ucrt64
+          path: dist/msys2-ucrt64
+          if-no-files-found: error
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcomb-wheel-win64
+          path: dist/wheels
+          if-no-files-found: error
+
+      - name: Upload release assets artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcomb-release-assets
+          path: dist/release-assets
+          if-no-files-found: error
+
+      - name: Publish GitHub release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $assets = Get-ChildItem dist\release-assets\* | Select-Object -ExpandProperty FullName
+          & cmd.exe /d /c "gh release view $tag --repo $env:GITHUB_REPOSITORY >NUL 2>NUL"
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag $assets --title $tag --notes "Automated release for $tag." --repo $env:GITHUB_REPOSITORY
+          }

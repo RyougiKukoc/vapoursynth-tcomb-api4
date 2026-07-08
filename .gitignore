@@ -22,3 +22,10 @@ missing
 src/.deps/
 src/.dirstamp
 src/.libs/
+_deps/
+build-*/
+build-ci-*/
+build-wheel/
+dist/
+vapoursynth/
+verification*/

@@ -68,6 +68,45 @@ Parameters:
       change on the luma plane.
 
 
+Installation
+============
+
+Windows x86_64 users can install the package directly from the Git repository:
+
+::
+
+   pip install "vapoursynth-tcomb @ git+https://github.com/RyougiKukoc/vapoursynth-tcomb-api4.git"
+
+The source-install wheel build first tries to download the matching GitHub
+Release asset:
+
+::
+
+   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4/tcomb-msys2-ucrt64.zip
+
+If that asset is not available, the build hook falls back to a local Meson
+build. The fallback requires a Windows x86_64 build environment with Meson,
+Ninja, GCC from MSYS2/UCRT64, pkg-config, and VapourSynth API4 headers.
+
+To force a local build:
+
+::
+
+   set TCOMB_FORCE_BUILD=1
+   pip install "vapoursynth-tcomb @ git+https://github.com/RyougiKukoc/vapoursynth-tcomb-api4.git"
+
+To test a local or custom prebuilt zip:
+
+::
+
+   set TCOMB_PREBUILT_URL=C:\path\to\tcomb-msys2-ucrt64.zip
+   pip install --force-reinstall --no-deps --no-build-isolation .
+
+The wheel installs the plugin under ``vapoursynth/plugins/tcomb/`` with a
+``manifest.vs`` file so VapourSynth can autoload ``tcomb.dll`` from the
+installed package.
+
+
 Compilation
 ===========
 
