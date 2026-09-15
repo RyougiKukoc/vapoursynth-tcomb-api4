@@ -71,22 +71,23 @@ Parameters:
 Installation
 ============
 
-Windows x86_64 users can install the package directly from the Git repository:
+Windows and Linux x86_64 users can install the package directly from the Git
+repository:
 
 ::
 
    pip install "vapoursynth-tcomb @ git+https://github.com/RyougiKukoc/vapoursynth-tcomb-api4.git"
 
 The source-install wheel build first tries to download the matching GitHub
-Release asset:
+Release asset for its platform:
 
 ::
 
-   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.1/tcomb-msys2-ucrt64.zip
+   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.2/tcomb-msys2-ucrt64.zip
+   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.2/tcomb-linux-x86_64.zip
 
-If that asset is not available, the build hook falls back to a local Meson
-build. The fallback requires a Windows x86_64 build environment with Meson,
-Ninja, GCC from MSYS2/UCRT64, pkg-config, and VapourSynth API4 headers.
+If the matching asset is unavailable, the build hook falls back to a local
+Meson build. Set ``TCOMB_FORCE_BUILD=1`` to select that path deliberately.
 
 To force a local build:
 
@@ -103,8 +104,22 @@ To test a local or custom prebuilt zip:
    pip install --force-reinstall --no-deps --no-build-isolation .
 
 The wheel installs the plugin under ``vapoursynth/plugins/tcomb/`` with a
-``manifest.vs`` file so VapourSynth can autoload ``tcomb.dll`` from the
-installed package.
+``manifest.vs`` file so VapourSynth can autoload the platform-native plugin.
+
+Linux releases are built in a manylinux2014 container. TComb itself therefore
+does not require a newer glibc than the current VapourSynth runtime wheel;
+VapourSynth R79 currently requires glibc 2.27 or newer. To build locally,
+install a C compiler and ``pkg-config``; the installed VapourSynth pip wheel
+supplies the API4 headers and pkg-config metadata automatically:
+
+::
+
+   sudo apt-get install build-essential pkg-config
+   pip install "vapoursynth-tcomb @ git+https://github.com/RyougiKukoc/vapoursynth-tcomb-api4.git"
+
+The published Linux wheel is tagged ``manylinux_2_27_x86_64`` to match that
+VapourSynth runtime baseline. ``TCOMB_FORCE_BUILD=1`` remains available for
+users who provide their own compatible VapourSynth SDK/runtime.
 
 
 Compilation
