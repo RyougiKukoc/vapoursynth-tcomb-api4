@@ -180,6 +180,12 @@ jobs:
           python -m pip install --force-reinstall --no-deps dist/release-assets-linux/*.whl
           python tools/ci_smoke_installed_wheel.py
 
+      - name: Explicitly smoke test Linux release plugin
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python tools/ci_smoke_package.py --artifact-zip dist/release-assets-linux/tcomb-linux-x86_64.zip
+
       - name: Smoke test source install with Linux release asset
         shell: bash
         run: |

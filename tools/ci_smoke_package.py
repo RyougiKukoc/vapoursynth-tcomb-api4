@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -15,6 +16,21 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_NAME = "tcomb"
+
+
+def plugin_suffix() -> str:
+    if sys.platform == "win32":
+        return ".dll"
+    if sys.platform == "darwin":
+        return ".dylib"
+    return ".so"
+
+
+def frame_hash(frame: Any) -> str:
+    digest = hashlib.sha256()
+    for plane in range(frame.format.num_planes):
+        digest.update(bytes(frame[plane]))
+    return digest.hexdigest()
 
 
 class IsolatedEnvironmentPolicy:
@@ -84,7 +100,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     artifact_dir, temp_dir = resolve_artifact_dir(args.artifact_dir, args.artifact_zip)
-    plugin = artifact_dir / f"{PLUGIN_NAME}.dll"
+    plugin = artifact_dir / f"{PLUGIN_NAME}{plugin_suffix()}"
     manifest = artifact_dir / "manifest.vs"
     if not plugin.exists():
         raise FileNotFoundError(f"missing plugin: {plugin}")
@@ -104,8 +120,20 @@ def main(argv: list[str]) -> int:
     core.std.LoadPlugin(str(plugin))
     src = core.std.BlankClip(width=64, height=48, format=vs.YUV420P8, length=12, color=[96, 128, 128])
     out = core.tcomb.TComb(src)
-    frame = out.get_frame(3)
+    frames = {number: out.get_frame(number) for number in (0, 3, 11)}
+    frame = frames[3]
     stats = dict(core.std.PlaneStats(out).get_frame(3).props)
+    hashes = {number: frame_hash(value) for number, value in frames.items()}
+    if len(set(hashes.values())) != 1:
+        raise RuntimeError(f"static TComb input produced inconsistent frame hashes: {hashes}")
+
+    invalid_input_rejected = False
+    try:
+        core.tcomb.TComb(core.std.BlankClip(width=64, height=48, format=vs.RGB24, length=1))
+    except vs.Error:
+        invalid_input_rejected = True
+    if not invalid_input_rejected:
+        raise RuntimeError("TComb accepted unsupported RGB input")
     result = {
         "plugin": str(plugin),
         "manifest": str(manifest),
@@ -113,6 +141,8 @@ def main(argv: list[str]) -> int:
         "height": frame.height,
         "format": frame.format.name,
         "frames": out.num_frames,
+        "frame_hashes": hashes,
+        "invalid_input_rejected": invalid_input_rejected,
         "plane_stats_average": float(stats["PlaneStatsAverage"]),
         "plane_stats_min": float(stats["PlaneStatsMin"]),
         "plane_stats_max": float(stats["PlaneStatsMax"]),
