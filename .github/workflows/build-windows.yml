@@ -113,7 +113,6 @@ jobs:
   linux-x86_64:
     name: Build Linux x86_64
     runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux2014_x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -121,30 +120,33 @@ jobs:
       - name: Build Linux wheel and release payload
         shell: bash
         run: |
-          set -exo pipefail
-          py=/opt/python/cp312-cp312/bin/python
-          source /opt/rh/devtoolset-10/enable
-          set -u
-          export PATH="/opt/python/cp312-cp312/bin:$PATH"
-          "$py" -m pip install --upgrade pip
-          "$py" -m pip install build hatchling packaging meson ninja
-          mkdir -p _deps/vapoursynth-wheel dist/wheels-linux dist/linux-x86_64
-          "$py" -m pip download --only-binary=:all: --no-deps \
-            --platform manylinux_2_27_x86_64 --implementation cp --python-version 312 --abi abi3 \
-            VapourSynth -d _deps/vapoursynth-wheel
-          unzip -q _deps/vapoursynth-wheel/*.whl -d _deps/vapoursynth-wheel/extracted
-          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/_deps/vapoursynth-wheel/extracted/vapoursynth/pkgconfig"
-          export TCOMB_FORCE_BUILD=1
-          export TCOMB_PLATFORM_TAG=manylinux_2_27_x86_64
-          "$py" -m build --wheel --no-isolation --outdir dist/wheels-linux
-          wheel=$(find dist/wheels-linux -name '*.whl' -print -quit)
-          test -n "$wheel"
-          unzip -q "$wheel" 'vapoursynth/plugins/tcomb/*' -d dist/linux-x86_64/extracted
-          mv dist/linux-x86_64/extracted/vapoursynth/plugins/tcomb dist/linux-x86_64/tcomb
-          "$py" tools/ci_make_release_assets.py --clean \
-            --package-dir dist/linux-x86_64/tcomb --wheel-dir dist/wheels-linux \
-            --out-dir dist/release-assets-linux --zip-name tcomb-linux-x86_64.zip
-          "$py" -c "import re, subprocess; out = subprocess.check_output(['readelf', '--version-info', 'dist/linux-x86_64/tcomb/tcomb.so'], text=True); versions = [tuple(map(int, value.split('.'))) for value in re.findall(r'GLIBC_(\\d+\\.\\d+)', out)]; assert all(version <= (2, 17) for version in versions), versions"
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            quay.io/pypa/manylinux2014_x86_64 bash -lc '
+              set -exo pipefail
+              py=/opt/python/cp312-cp312/bin/python
+              source /opt/rh/devtoolset-10/enable
+              set -u
+              export PATH="/opt/python/cp312-cp312/bin:$PATH"
+              "$py" -m pip install --upgrade pip
+              "$py" -m pip install build hatchling packaging meson ninja
+              mkdir -p _deps/vapoursynth-wheel dist/wheels-linux dist/linux-x86_64
+              "$py" -m pip download --only-binary=:all: --no-deps \
+                --platform manylinux_2_27_x86_64 --implementation cp --python-version 312 --abi abi3 \
+                VapourSynth -d _deps/vapoursynth-wheel
+              unzip -q _deps/vapoursynth-wheel/*.whl -d _deps/vapoursynth-wheel/extracted
+              export PKG_CONFIG_PATH="/workspace/_deps/vapoursynth-wheel/extracted/vapoursynth/pkgconfig"
+              export TCOMB_FORCE_BUILD=1
+              export TCOMB_PLATFORM_TAG=manylinux_2_27_x86_64
+              "$py" -m build --wheel --no-isolation --outdir dist/wheels-linux
+              wheel=$(find dist/wheels-linux -name "*.whl" -print -quit)
+              test -n "$wheel"
+              unzip -q "$wheel" "vapoursynth/plugins/tcomb/*" -d dist/linux-x86_64/extracted
+              mv dist/linux-x86_64/extracted/vapoursynth/plugins/tcomb dist/linux-x86_64/tcomb
+              "$py" tools/ci_make_release_assets.py --clean \
+                --package-dir dist/linux-x86_64/tcomb --wheel-dir dist/wheels-linux \
+                --out-dir dist/release-assets-linux --zip-name tcomb-linux-x86_64.zip
+              "$py" -c "import re, subprocess; out = subprocess.check_output([\"readelf\", \"--version-info\", \"dist/linux-x86_64/tcomb/tcomb.so\"], text=True); versions = [tuple(map(int, value.split(\".\"))) for value in re.findall(r\"GLIBC_(\\d+\\.\\d+)\", out)]; assert all(version <= (2, 17) for version in versions), versions"
+            '
 
       - name: Upload Linux release assets
         uses: actions/upload-artifact@v4

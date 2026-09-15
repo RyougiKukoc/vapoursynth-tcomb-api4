@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vapoursynth-tcomb"
-version = "4.2"
+version = "4.3"
 description = "TComb temporal comb VapourSynth plugin"
 readme = "readme.rst"
 license = { text = "GPL-2.0-or-later" }

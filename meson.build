@@ -1,5 +1,5 @@
 project('TComb', 'c',
-        version: '4.2',
+        version: '4.3',
         default_options: ['c_std=c99', 'buildtype=release'],
         meson_version: '>=0.46')
 
