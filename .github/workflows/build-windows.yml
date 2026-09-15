@@ -186,7 +186,7 @@ jobs:
           set -euxo pipefail
           python -m pip uninstall -y vapoursynth-tcomb
           export TCOMB_PREBUILT_URL="$GITHUB_WORKSPACE/dist/release-assets-linux/tcomb-linux-x86_64.zip"
-          python -m pip install --force-reinstall --no-deps --no-build-isolation -v .
+          python -m pip install --force-reinstall --no-deps -v .
           python tools/ci_smoke_installed_wheel.py
 
   publish-release:

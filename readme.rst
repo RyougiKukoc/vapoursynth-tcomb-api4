@@ -83,8 +83,8 @@ Release asset for its platform:
 
 ::
 
-   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.3/tcomb-msys2-ucrt64.zip
-   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.3/tcomb-linux-x86_64.zip
+   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.4/tcomb-msys2-ucrt64.zip
+   https://github.com/RyougiKukoc/vapoursynth-tcomb-api4/releases/download/v4.4/tcomb-linux-x86_64.zip
 
 If the matching asset is unavailable, the build hook falls back to a local
 Meson build. Set ``TCOMB_FORCE_BUILD=1`` to select that path deliberately.
